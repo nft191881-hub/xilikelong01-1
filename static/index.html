@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XILIkelong · 技术栈识别</title>
+<style>
+:root{--bg:#e9eef1;--panel:#fff;--ink:#12202b;--mute:#5b6b78;--line:#cfd9df;--accent:#0f766e;--accent-ink:#fff;--bar:#d9e4e8;--err:#b42318;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1a21;--panel:#16252e;--ink:#e6eef3;--mute:#93a7b4;--line:#2a3d49;--accent:#35b5a8;--accent-ink:#06211e;--bar:#24394515;--err:#ff8a80;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:760px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:1.6rem;margin:8px 0 4px;letter-spacing:.01em}
+.sub{color:var(--mute);margin:0 0 20px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line)}
+.tabs button{background:none;border:0;border-bottom:3px solid transparent;padding:10px 14px;font:inherit;color:var(--mute);cursor:pointer}
+.tabs button[aria-selected=true]{color:var(--ink);border-color:var(--accent);font-weight:600}
+.panel{background:var(--panel);border:1px solid var(--line);border-top:0;padding:16px}
+textarea,input[type=url]{width:100%;font:inherit;color:var(--ink);background:transparent;border:1px solid var(--line);border-radius:6px;padding:10px}
+textarea{min-height:160px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9rem}
+.go{margin-top:12px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:10px 20px;font:inherit;font-weight:600;cursor:pointer}
+.go:disabled{opacity:.5;cursor:wait}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.hidden{display:none}
+#result{margin-top:24px}
+.layer{display:grid;grid-template-columns:4.5rem 1fr;gap:4px 12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.layer b{color:var(--mute);font-weight:500}
+.layer span{font-weight:600}
+.err{color:var(--err);font-weight:600}
+.meter{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:6px 0 2px}
+.meter i{display:block;height:100%;background:var(--accent)}
+h2{font-size:1rem;margin:20px 0 6px}
+ul{margin:0;padding-left:1.2em;color:var(--mute);font-size:.92rem}
+pre{margin:0;padding:12px;background:var(--bg);border-radius:6px;overflow-x:auto;font-size:.85rem}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:0 8px;margin:0 6px 6px 0;font-size:.85rem}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+td,th{text-align:left;padding:6px 8px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:500}
+.scroll{overflow-x:auto}
+@media (prefers-reduced-motion:no-preference){.meter i{transition:width .4s}}
+</style>
+</head>
+<body>
+<main>
+  <h1>技术栈识别</h1>
+  <p class="sub">贴入代码、输入网址或上传截图，判断它用了什么前端、后端和数据库。</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="text">文本 / 代码</button>
+    <button role="tab" aria-selected="false" data-tab="url">网址</button>
+    <button role="tab" aria-selected="false" data-tab="image">截图</button>
+  </div>
+  <div class="panel">
+    <div data-pane="text"><textarea id="text" placeholder="粘贴代码、页面源码、报错信息或依赖清单"></textarea></div>
+    <div data-pane="url" class="hidden"><input id="url" type="url" placeholder="https://example.com"></div>
+    <div data-pane="image" class="hidden"><input id="image" type="file" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif"></div>
+    <button class="go" id="go">开始识别</button>
+  </div>
+
+  <section id="result" aria-live="polite"></section>
+
+  <h2>最近记录</h2>
+  <div class="scroll"><table id="history"><thead><tr><th>时间</th><th>来源</th><th>前端</th><th>后端</th><th>数据库</th></tr></thead><tbody></tbody></table></div>
+</main>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+let tab = "text";
+
+document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll("[data-tab]").forEach(x => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll("[data-pane]").forEach(p => p.classList.toggle("hidden", p.dataset.pane !== tab));
+}));
+
+function render(data) {
+  const box = $("#result"); box.replaceChildren();
+  if (data.error) { box.append(el("p", data.error, "err")); return; }
+  [["前端", data.frontend], ["后端", data.backend], ["数据库", data.database]].forEach(([k, v]) => {
+    const row = el("div", null, "layer");
+    row.append(el("b", k), el("span", v || "未识别"));
+    box.append(row);
+  });
+  const pct = Math.round((data.confidence || 0) * 100);
+  box.append(el("p", `整体置信度 ${pct}%`));
+  const m = el("div", null, "meter"), i = el("i"); i.style.width = pct + "%"; m.append(i); box.append(m);
+  if (data.extras && data.extras.length) {
+    box.append(el("h2", "其他特征"));
+    const w = el("div"); data.extras.forEach(x => w.append(el("span", x, "tag"))); box.append(w);
+  }
+  if (data.evidence && data.evidence.length) {
+    box.append(el("h2", "判断依据"));
+    const ul = el("ul"); data.evidence.forEach(x => ul.append(el("li", x))); box.append(ul);
+  }
+  if (data.skeleton && data.skeleton.length) {
+    box.append(el("h2", "建议项目结构"));
+    box.append(el("pre", data.skeleton.join("\n")));
+  }
+  if (data.ocr_text) { box.append(el("h2", "识别出的文字")); box.append(el("pre", data.ocr_text)); }
+}
+
+async function run() {
+  const btn = $("#go"); btn.disabled = true; btn.textContent = "识别中…";
+  try {
+    let res;
+    if (tab === "image") {
+      const f = $("#image").files[0];
+      if (!f) return render({ error: "请先选择一张截图。" });
+      const fd = new FormData(); fd.append("file", f);
+      res = await fetch("/api/infer/image", { method: "POST", body: fd });
+    } else {
+      const val = tab === "text" ? $("#text").value.trim() : $("#url").value.trim();
+      if (!val) return render({ error: tab === "text" ? "请先输入内容。" : "请先输入网址。" });
+      res = await fetch(tab === "text" ? "/api/infer/text" : "/api/infer/url", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(tab === "text" ? { text: val } : { url: val })
+      });
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && !data.error) data.error = data.detail ? String(data.detail) : `请求失败（${res.status}）`;
+    render(data);
+    loadHistory();
+  } catch (e) {
+    render({ error: "无法连接服务：" + e.message });
+  } finally {
+    btn.disabled = false; btn.textContent = "开始识别";
+  }
+}
+
+async function loadHistory() {
+  try {
+    const { items } = await (await fetch("/api/history")).json();
+    const tb = $("#history tbody"); tb.replaceChildren();
+    if (!items.length) { const r = el("tr"); const c = el("td", "还没有记录（需要配置 DATABASE_URL）"); c.colSpan = 5; r.append(c); tb.append(r); return; }
+    items.forEach(it => {
+      const r = el("tr");
+      [new Date(it.created_at).toLocaleString(), it.source_type, it.frontend || "-", it.backend || "-", it.database_name || "-"]
+        .forEach(t => r.append(el("td", t)));
+      tb.append(r);
+    });
+  } catch (_) {}
+}
+
+$("#go").addEventListener("click", run);
+loadHistory();
+</script>
+</body>
+</html>
